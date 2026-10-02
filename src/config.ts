@@ -25,6 +25,13 @@ const toolSchema = z
 export const configSchema = z
   .object({
     mode: z.enum(["monitor", "enforce"]).default("enforce"),
+    checkIn: z
+      .object({
+        enabled: z.boolean().default(true),
+        onFlagged: z.enum(["label", "redact", "drop"]).default("label"),
+      })
+      .strict()
+      .prefault({}),
     tools: z.record(z.string(), toolSchema).default({}),
     defaults: z
       .object({

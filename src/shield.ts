@@ -1,4 +1,5 @@
 import { appendFileSync } from "node:fs";
+import { checkIn as runCheckIn, type Detection } from "./check-in.js";
 import { checkOut, policyFor, redactSecrets, type SessionState, type Verdict } from "./check-out.js";
 import { loadConfig, type ShieldConfig, type ShieldConfigInput } from "./config.js";
 
@@ -9,7 +10,7 @@ export interface ApprovalRequest {
   sessionId: string;
 }
 
-export interface ShieldEvent {
+export interface CheckOutEvent {
   time: string;
   sessionId: string;
   stage: "check_out";
@@ -21,6 +22,19 @@ export interface ShieldEvent {
   taintSources: string[];
   args: string;
 }
+
+export interface CheckInEvent {
+  time: string;
+  sessionId: string;
+  stage: "check_in";
+  source: string;
+  flagged: boolean;
+  detections: Detection[];
+  removed: string[];
+  error?: string;
+}
+
+export type ShieldEvent = CheckOutEvent | CheckInEvent;
 
 export interface ShieldOptions {
   config: ShieldConfigInput | string;
@@ -93,14 +107,31 @@ export function createShield(options: ShieldOptions) {
     if (decision !== "allow") return { ok: false, message: `Blocked by agent-shield: ${result.reasons.map(redactSecrets).join("; ")}` };
 
     const value = await run();
-    const source = `tool:${tool}`;
-    if (policyFor(config, tool).output === "untrusted" && !state.taintSources.includes(source)) state.taintSources.push(source);
-    return { ok: true, value };
+    if (policyFor(config, tool).output === "trusted") return { ok: true, value };
+    return { ok: true, value: checkIn(value, { source: `tool:${tool}`, sessionId }) as T };
+  }
+
+  // Cleans and labels untrusted content, and marks the session tainted.
+  function checkIn(value: unknown, { source = "external", sessionId = DEFAULT_SESSION } = {}): unknown {
+    const state = session(sessionId);
+    if (!state.taintSources.includes(source)) state.taintSources.push(source);
+    if (!config.checkIn.enabled) return value;
+    const event = { time: new Date().toISOString(), sessionId, stage: "check_in" as const, source };
+    try {
+      const r = runCheckIn(value, source, config.checkIn.onFlagged);
+      log({ ...event, flagged: r.flagged, detections: r.detections.map((d) => ({ ...d, match: redactSecrets(d.match) })), removed: r.removed });
+      return config.mode === "monitor" ? value : r.value;
+    } catch (err) {
+      // content stays tainted, so risky actions still need approval
+      log({ ...event, flagged: false, detections: [], removed: [], error: (err as Error).message });
+      return value;
+    }
   }
 
   return {
     config,
     guard,
+    checkIn,
     isTainted: (sessionId = DEFAULT_SESSION) => session(sessionId).taintSources.length > 0,
     reset: (sessionId = DEFAULT_SESSION) => void sessions.delete(sessionId),
   };
@@ -109,6 +140,13 @@ export function createShield(options: ShieldOptions) {
 export type Shield = ReturnType<typeof createShield>;
 
 export function consoleLogger(event: ShieldEvent) {
+  if (event.stage === "check_in") {
+    if (event.flagged || event.removed.length) {
+      const rules = [...new Set(event.detections.map((d) => d.rule))];
+      console.warn(`[agent-shield] check-in ${event.source}: ${[...event.removed.map((r) => `removed ${r}`), ...rules.map((r) => `flagged ${r}`)].join("; ")}`);
+    }
+    return;
+  }
   if (event.decision !== "allow" || event.wouldBe) {
     console.warn(`[agent-shield] ${event.wouldBe ?? event.decision} ${event.tool}: ${event.reasons.join("; ")}`);
   }
