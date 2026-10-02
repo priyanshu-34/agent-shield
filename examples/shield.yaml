@@ -1,0 +1,22 @@
+mode: enforce
+
+tools:
+  fetch_page:
+    risk: safe
+    rules:
+      url:
+        allowDomains: ["*.example.com"]
+
+  read_file:
+    risk: safe
+    rules:
+      path:
+        allowPaths: ["workspace/**"]
+        denyPaths: ["**/secrets.txt", "**/.env"]
+
+  send_email:
+    risk: risky
+    rules:
+      to:
+        allow: ["*@mycompany.com"]
+    maxPerSession: 5
