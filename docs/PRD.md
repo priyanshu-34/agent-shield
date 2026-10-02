@@ -201,7 +201,8 @@ Why this works: even if an attack gets past Check In completely, the agent **can
 
 | Trick | What we do |
 |-------|------------|
-| Invisible text (white text, `display:none`, font-size 0) | Remove it |
+| Invisible text (`display:none`, font-size 0, opacity 0, off-screen) | Remove it |
+| White text | Remove it **only if** it contains an attack phrase (real emails use white text on colored buttons) |
 | HTML comments `<!-- -->` | Remove them |
 | Invisible Unicode (zero-width spaces, tag characters, right-to-left tricks) | Remove them |
 | Hidden text in `alt`, `title` and `aria-*` attributes | Remove or flag it |
@@ -341,8 +342,8 @@ mode: enforce
 
 checkIn:
   onFlagged: label        # label | redact | drop
-  classifier: true
-  llmJudge: false
+  # classifier: true      # coming in M5
+  # llmJudge: false       # coming in M5
 
 tools:
   search_web:

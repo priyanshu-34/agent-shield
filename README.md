@@ -2,7 +2,7 @@
 
 Stop AI agents from being tricked by hidden instructions in web pages, emails and files.
 
-> **Status:** early work in progress. Check Out (tool-call rules) works today. Check In, the classifier and the red-team agent are coming next. Not on npm yet.
+> **Status:** early work in progress. Check In (cleaning incoming content) and Check Out (tool-call rules) work today. The classifier and the red-team agent are coming next. Not on npm yet.
 
 ## The problem
 
@@ -20,7 +20,17 @@ The model can't tell **data** from **orders**, so it may obey. This is called **
 
 You can't make the model never fall for it. You **can** stop it from *acting* on it.
 
-agent-shield wraps your agent's tools and checks every call before it runs:
+agent-shield wraps your agent's tools and does two checks.
+
+**Check In** cleans everything a tool returns before the agent sees it:
+
+- removes hidden HTML (`display:none`, zero-size text, off-screen text, `hidden`, comments, scripts, and white text that contains an attack)
+- removes invisible unicode, including "tag" characters used to smuggle hidden messages
+- decodes base64, hex and URL-encoded text and scans it too
+- flags common attack phrases ("ignore previous instructions", "you are now…", fake `system:` lines, "don't tell the user"…)
+- wraps the result as `<untrusted source="tool:fetch_page">…</untrusted>` so the model treats it as data
+
+**Check Out** checks every tool call before it runs:
 
 - ✅ **Allow:** the call follows your rules.
 - ⛔ **Block:** it breaks a rule (unknown recipient, protected file, secret in the arguments…).
@@ -38,14 +48,21 @@ npm run demo
 No API key needed. The demo uses a scripted "gullible" model that obeys anything it reads.
 
 ```
-=== 1. Without agent-shield ===
+=== 1. Without agent-shield: hidden attack ===
 Emails sent: [{ to: 'attacker@evil.example', body: 'OPENAI_API_KEY=sk-demo-...' }]
 
-=== 2. With agent-shield ===
+=== 2. With agent-shield: hidden attack is stripped by Check In ===
+[agent-shield] check-in tool:fetch_page: removed hidden elements (display:none); flagged ignore-previous; flagged system-note
+Emails sent: []
+
+=== 3. With agent-shield: visible attack gets through Check In, Check Out stops it ===
+[agent-shield] check-in tool:fetch_page: flagged ignore-previous; flagged note-to-ai
 [agent-shield] block read_file: path "notes/secrets.txt" is a protected path
 [agent-shield] block send_email: to "attacker@evil.example" is not in the allow list
 Emails sent: []
 ```
+
+Scenario 3 is the point: Check In won't catch everything, so Check Out is the safety net.
 
 ## Usage (LangChain / LangGraph)
 
@@ -68,12 +85,19 @@ Not using LangChain? Use the core directly:
 ```ts
 const result = await shield.guard("send_email", args, () => sendEmail(args), sessionId);
 // result.ok ? result.value : result.message
+
+// content that doesn't come from a tool (RAG chunks, emails…)
+const safeText = shield.checkIn(emailHtml, { source: "email:inbox", sessionId });
 ```
 
 ## Config
 
 ```yaml
 mode: enforce            # or "monitor": log what would be blocked, block nothing
+
+checkIn:
+  enabled: true
+  onFlagged: label       # label (keep + mark high risk) | redact (remove flagged sentences) | drop (remove all)
 
 tools:
   fetch_page:
@@ -102,6 +126,8 @@ tools:
     risk: blocked
 ```
 
+> `redact` only removes flagged **visible sentences**. Attacks hidden in base64 or `alt` text still reach the agent, so Check Out stays the safety net.
+
 Prefer TypeScript? `defineConfig({...})` gives you the same config with types and autocomplete.
 
 | Rule | Checks |
@@ -126,7 +152,7 @@ Tools not listed in the config are treated as `risky`.
 
 - [x] M1: Demo agent that gets tricked
 - [x] M2: Check Out: tool rules, taint, secret check, approvals, logging
-- [ ] M3: Check In: strip hidden text, detect attack patterns
+- [x] M3: Check In: strip hidden text, decode encodings, detect attack patterns
 - [ ] M4: Approval and logging polish
 - [ ] M5: Local classifier + output check (markdown image leaks)
 - [ ] M6: Test set + published scores
