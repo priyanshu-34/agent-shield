@@ -9,5 +9,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src", "examples", "test"]
+  "include": ["src", "examples", "test", "bench"]
 }
