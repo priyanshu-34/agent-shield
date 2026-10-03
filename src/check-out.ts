@@ -29,7 +29,7 @@ const SECRET_PATTERNS: [string, RegExp][] = [
 ];
 
 export function policyFor(config: ShieldConfig, toolName: string): ToolPolicy {
-  return config.tools[toolName] ?? { risk: config.defaults.unknownTool, output: "untrusted" };
+  return config.tools[toolName] ?? { risk: config.defaults.unknownTool, output: "untrusted", allowUrlData: false };
 }
 
 export function checkOut(
@@ -52,6 +52,8 @@ export function checkOut(
     reasons.push(...checkArg(argName, argObj[argName], rule));
   }
   for (const secret of findSecrets(args)) reasons.push(`arguments contain a ${secret}`);
+  // only after untrusted content is read; before that, URLs came from the user, not an attacker
+  if (!policy.allowUrlData && state.taintSources.length) reasons.push(...findUrlData(args));
   const count = state.callCounts[toolName] ?? 0;
   if (policy.maxPerSession !== undefined && count >= policy.maxPerSession) {
     reasons.push(`"${toolName}" already called ${count} times (limit ${policy.maxPerSession})`);
@@ -106,6 +108,37 @@ function checkPath(name: string, value: string, rule: ArgRule): string[] {
   const match = (patterns: string[]) => picomatch(patterns.map((p) => p.replace(/^\.\//, "")), { dot: true })(rel);
   if (rule.denyPaths && match(rule.denyPaths)) return [`${name} "${value}" is a protected path`];
   if (rule.allowPaths && !match(rule.allowPaths)) return [`${name} "${value}" is not in an allowed folder`];
+  return [];
+}
+
+// Long encoded-looking chunks in a URL are how agents get tricked into leaking data with a simple GET.
+export function findUrlData(value: unknown): string[] {
+  const reasons: string[] = [];
+  for (const s of strings(value)) {
+    if (!/^https?:\/\//i.test(s)) continue;
+    let url: URL;
+    try {
+      url = new URL(s);
+    } catch {
+      continue;
+    }
+    const parts = [...url.pathname.split("/"), ...[...url.searchParams.values()], url.hash.slice(1)];
+    if (url.search.length + url.hash.length > 500) reasons.push(`URL to ${url.hostname} carries a lot of data (${url.search.length + url.hash.length} chars)`);
+    else if (parts.some(looksLikeBase64)) reasons.push(`URL to ${url.hostname} carries encoded-looking data`);
+  }
+  return reasons;
+}
+
+// ponytail: hex-encoded leaks pass (they look like commit SHAs); hyphenated slugs are not data
+function looksLikeBase64(part: string): boolean {
+  if (part.length < 40 || !/^[A-Za-z0-9+/=_-]+$/.test(part) || /^[a-z0-9]+(-[a-z0-9]+)+$/i.test(part)) return false;
+  return /=$/.test(part) || (/[A-Z]/.test(part) && /[a-z]/.test(part) && /\d/.test(part));
+}
+
+function strings(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(strings);
+  if (value && typeof value === "object") return Object.values(value).flatMap(strings);
   return [];
 }
 

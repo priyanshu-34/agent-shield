@@ -18,6 +18,8 @@ const toolSchema = z
     risk: z.enum(["safe", "risky", "blocked"]).default("risky"),
     output: z.enum(["untrusted", "trusted"]).default("untrusted"),
     maxPerSession: z.number().int().positive().optional(),
+    // turn off the data-in-URL check for tools that legitimately use long URL tokens (e.g. presigned links)
+    allowUrlData: z.boolean().default(false),
     rules: z.record(z.string(), ruleSchema).optional(),
   })
   .strict();
