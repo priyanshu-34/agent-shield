@@ -45,6 +45,8 @@ Blocked calls return a message to the agent instead of throwing an error, so the
 
 ## Demo
 
+![agent-shield demo: an agent leaks a key without the shield; with it, every attack is blocked](docs/demo.svg)
+
 ```bash
 npm install
 npm run demo
