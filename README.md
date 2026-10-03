@@ -2,7 +2,11 @@
 
 Stop AI agents from being tricked by hidden instructions in web pages, emails and files.
 
-> **Status:** early work in progress. Check In, Check Out, approvals, the optional local classifier and the output check work today. The red-team agent is coming next. Not on npm yet.
+> **Status:** v0.1, early. Check In, Check Out, approvals, the optional local classifier and the output check work today, with LangChain/LangGraph and Mastra adapters. The red-team agent is coming next.
+
+```bash
+npm install agent-shield
+```
 
 ## The problem
 
@@ -81,7 +85,24 @@ const agent = createAgent({ model, tools: shieldTools(shield, tools) });
 await agent.invoke(input, { configurable: { thread_id: "chat-42" } });
 ```
 
-Not using LangChain? Use the core directly:
+## Usage (Mastra)
+
+```ts
+import { Agent } from "@mastra/core/agent";
+import { createShield } from "agent-shield";
+import { shieldMastraTools } from "agent-shield/mastra";
+
+const shield = createShield({ config: "./shield.yaml", onApproval: askUser });
+const agent = new Agent({ id: "assistant", name: "Assistant", instructions, model, tools: shieldMastraTools(shield, tools) });
+await agent.generate(input, { memory: { thread: "chat-42", resource: "user-1" } });
+```
+
+- Untrusted reads are tracked per Mastra `threadId`.
+- Each tool keeps its own settings (`requireApproval`, schemas…). Only `outputSchema` is removed, since a checked result can be a block message or a labelled string.
+
+## Usage (anything else)
+
+Not using LangChain or Mastra? Use the core directly:
 
 ```ts
 const result = await shield.guard("send_email", args, () => sendEmail(args), sessionId);
@@ -285,7 +306,7 @@ createShield({ config, onApproval: async (req) => (await askOnSlack(req.summary)
 - [x] M4: Approvals (terminal, LangGraph interrupt, callback), lockdown, data-in-URL check
 - [x] M5: Local classifier (benchmarked, Horizon-Labs guard small by default) + output check (markdown image leaks)
 - [x] M6: Test set (516 items + 20 agent scenarios) + published scores
-- [ ] M7: Mastra adapter, npm release
+- [x] M7: Mastra adapter, npm release (v0.1.0)
 - [ ] M8: Red-team agent that attacks the shield
 
 Full plan: [docs/PRD.md](docs/PRD.md)

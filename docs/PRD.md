@@ -562,7 +562,7 @@ Each item records: content, source type, attack technique, expected result.
 | M4 | **Ask Human + Log** | Approval callback, terminal approval, JSON log | A flagged call pauses and waits; every decision is logged |
 | M5 | **Classifier + Output Check** | Test the candidate classifiers, ship the winner (see 7.1), encoding checks, markdown-image cleaning | UC-2 and UC-7 pass ✅ (winner: Horizon-Labs guard small, see bench/results.md) |
 | M6 | **Test set + scores** | 400 items + scoring script | Numbers in the README ✅ (516 items + 20 agent scenarios, bench/eval-results.md) |
-| M7 | **Adapters + publish** | LangChain/LangGraph adapter first, then Mastra; `npm publish` as `agent-shield`, docs, demo video | Anyone can `npm install agent-shield` and try it |
+| M7 | **Adapters + publish** | LangChain/LangGraph adapter first, then Mastra; `npm publish` as `agent-shield`, docs, demo video | Anyone can `npm install agent-shield` and try it ✅ (adapters `agent-shield/langchain`, `agent-shield/langgraph`, `agent-shield/mastra`) |
 | M8 | **Red-team agent** | Attacker loop + report | First report published |
 
 **Later (v2+):** MCP proxy, local dashboard, Python version, streaming support, image checks, LLM judge tuning, a shared policy server for teams.
