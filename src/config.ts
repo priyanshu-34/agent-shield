@@ -38,6 +38,8 @@ export const configSchema = z
         unknownTool: z.enum(["safe", "risky", "blocked"]).default("risky"),
         approvalTimeoutMs: z.number().int().positive().default(5 * 60_000),
         onError: z.enum(["block", "allow"]).default("block"),
+        // lock all tools after this many rule blocks in one conversation; 0 turns it off
+        maxBlocks: z.number().int().min(0).default(3),
       })
       .strict()
       .prefault({}),

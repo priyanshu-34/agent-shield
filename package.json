@@ -12,22 +12,30 @@
     "./langchain": {
       "import": "./dist/langchain.js",
       "require": "./dist/langchain.cjs"
+    },
+    "./langgraph": {
+      "import": "./dist/langgraph.js",
+      "require": "./dist/langgraph.cjs"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts src/langchain.ts --format esm,cjs --dts --clean",
+    "build": "tsup src/index.ts src/langchain.ts src/langgraph.ts --format esm,cjs --dts --clean",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "demo": "tsx examples/victim-demo.ts"
   },
   "peerDependencies": {
-    "@langchain/core": "^1.1.0"
+    "@langchain/core": "^1.1.0",
+    "@langchain/langgraph": "^1.0.0"
   },
   "peerDependenciesMeta": {
     "@langchain/core": {
+      "optional": true
+    },
+    "@langchain/langgraph": {
       "optional": true
     }
   },
@@ -39,6 +47,7 @@
   },
   "devDependencies": {
     "@langchain/core": "^1.2.14",
+    "@langchain/langgraph": "^1.4.18",
     "@types/node": "^26.6.4",
     "@types/picomatch": "^4.0.3",
     "langchain": "^1.5.15",

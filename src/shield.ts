@@ -1,6 +1,7 @@
 import { appendFileSync } from "node:fs";
+import { createInterface } from "node:readline/promises";
 import { checkIn as runCheckIn, type Detection } from "./check-in.js";
-import { checkOut, policyFor, redactSecrets, type SessionState, type Verdict } from "./check-out.js";
+import { checkOut, newSession, policyFor, redactSecrets, type SessionState, type Verdict } from "./check-out.js";
 import { loadConfig, type ShieldConfig, type ShieldConfigInput } from "./config.js";
 
 export interface ApprovalRequest {
@@ -8,6 +9,10 @@ export interface ApprovalRequest {
   args: unknown;
   reasons: string[];
   sessionId: string;
+  // plain-words explanation to show the person approving
+  summary: string;
+  taintSources: string[];
+  flaggedSources: string[];
 }
 
 export interface CheckOutEvent {
@@ -18,6 +23,8 @@ export interface CheckOutEvent {
   decision: Verdict;
   // what the decision would have been in enforce mode
   wouldBe?: Verdict;
+  // logged before waiting for a human, so paused calls still show up
+  pending?: boolean;
   reasons: string[];
   taintSources: string[];
   args: string;
@@ -54,7 +61,7 @@ export function createShield(options: ShieldOptions) {
 
   function session(id = DEFAULT_SESSION): SessionState {
     let s = sessions.get(id);
-    if (!s) sessions.set(id, (s = { taintSources: [], callCounts: {} }));
+    if (!s) sessions.set(id, (s = newSession()));
     return s;
   }
 
@@ -77,6 +84,8 @@ export function createShield(options: ShieldOptions) {
       if (answer === "allow") return { verdict: "allow", reasons: [...reasons, "approved by human"] };
       return { verdict: "block", reasons: [...reasons, answer === "timeout" ? "approval timed out" : "rejected by human"] };
     } catch (err) {
+      // framework pause signals (e.g. LangGraph interrupt) must pass through
+      if ((err as { is_bubble_up?: boolean })?.is_bubble_up) throw err;
       return { verdict: "block", reasons: [...reasons, `approval failed: ${(err as Error).message}`] };
     } finally {
       clearTimeout(timer);
@@ -86,24 +95,35 @@ export function createShield(options: ShieldOptions) {
   // Runs one tool call through Check Out, then marks the session tainted if the output is untrusted.
   async function guard<T>(tool: string, args: unknown, run: () => Promise<T>, sessionId = DEFAULT_SESSION): Promise<GuardResult<T>> {
     const state = session(sessionId);
+    const enforce = config.mode === "enforce";
     let result = safeCheckOut(tool, args, state);
+    // only rule blocks count toward lockdown, not missing approvers or human rejections
+    if (result.verdict === "block" && enforce) state.blockCount++;
     // reserve the call slot before any await, so parallel calls can't all slip under the limit
     const reserved = result.verdict !== "block";
     if (reserved) state.callCounts[tool] = (state.callCounts[tool] ?? 0) + 1;
-    if (result.verdict === "ask" && config.mode === "enforce") result = await ask({ tool, args, reasons: result.reasons, sessionId });
-    const decision: Verdict = config.mode === "monitor" ? "allow" : result.verdict;
-    if (reserved && decision !== "allow") state.callCounts[tool]--;
-    log({
+    const event = () => ({
       time: new Date().toISOString(),
       sessionId,
-      stage: "check_out",
+      stage: "check_out" as const,
       tool,
-      decision,
-      ...(decision !== result.verdict && { wouldBe: result.verdict }),
       reasons: result.reasons.map(redactSecrets),
       taintSources: [...state.taintSources],
       args: redactSecrets(JSON.stringify(args ?? {})),
     });
+
+    if (result.verdict === "ask" && enforce) {
+      log({ ...event(), decision: "ask", pending: true });
+      try {
+        result = await ask({ tool, args, reasons: result.reasons, sessionId, ...describe(tool, args, state) });
+      } catch (err) {
+        if (reserved) state.callCounts[tool]--;
+        throw err;
+      }
+    }
+    const decision: Verdict = enforce ? result.verdict : "allow";
+    if (reserved && decision !== "allow") state.callCounts[tool]--;
+    log({ ...event(), decision, ...(decision !== result.verdict && { wouldBe: result.verdict }) });
     if (decision !== "allow") return { ok: false, message: `Blocked by agent-shield: ${result.reasons.map(redactSecrets).join("; ")}` };
 
     const value = await run();
@@ -119,6 +139,7 @@ export function createShield(options: ShieldOptions) {
     const event = { time: new Date().toISOString(), sessionId, stage: "check_in" as const, source };
     try {
       const r = runCheckIn(value, source, config.checkIn.onFlagged);
+      if (r.flagged && !state.flaggedSources.includes(source)) state.flaggedSources.push(source);
       log({ ...event, flagged: r.flagged, detections: r.detections.map((d) => ({ ...d, match: redactSecrets(d.match) })), removed: r.removed });
       return config.mode === "monitor" ? value : r.value;
     } catch (err) {
@@ -139,12 +160,48 @@ export function createShield(options: ShieldOptions) {
 
 export type Shield = ReturnType<typeof createShield>;
 
+function describe(tool: string, args: unknown, state: SessionState) {
+  const shownArgs = redactSecrets(JSON.stringify(args ?? {}));
+  const flagged = state.flaggedSources.length
+    ? `Some of it was flagged as a possible attack (${state.flaggedSources.join(", ")}).`
+    : "None of it was flagged as an attack.";
+  return {
+    summary: `The agent wants to run "${tool}" with ${shownArgs.length > 300 ? shownArgs.slice(0, 300) + "…" : shownArgs}. ` +
+      `Earlier in this conversation it read untrusted content (${state.taintSources.join(", ")}). ${flagged}`,
+    taintSources: [...state.taintSources],
+    flaggedSources: [...state.flaggedSources],
+  };
+}
+
+// Asks in the terminal, one question at a time; blocks when there is no terminal (e.g. CI).
+export function terminalApproval(input: NodeJS.ReadableStream & { isTTY?: boolean } = process.stdin, output: NodeJS.WritableStream = process.stderr) {
+  let queue: Promise<unknown> = Promise.resolve();
+  return (request: ApprovalRequest): Promise<"allow" | "block"> => {
+    const answer = queue.then(async () => {
+      if (!input.isTTY) return "block" as const;
+      const rl = createInterface({ input, output });
+      try {
+        const reply = await rl.question(`\n[agent-shield] ${request.summary}\nAllow? (y/N) `);
+        return /^y(es)?$/i.test(reply.trim()) ? ("allow" as const) : ("block" as const);
+      } finally {
+        rl.close();
+      }
+    });
+    queue = answer.catch(() => {});
+    return answer;
+  };
+}
+
 export function consoleLogger(event: ShieldEvent) {
   if (event.stage === "check_in") {
     if (event.flagged || event.removed.length) {
       const rules = [...new Set(event.detections.map((d) => d.rule))];
       console.warn(`[agent-shield] check-in ${event.source}: ${[...event.removed.map((r) => `removed ${r}`), ...rules.map((r) => `flagged ${r}`)].join("; ")}`);
     }
+    return;
+  }
+  if (event.pending) {
+    console.warn(`[agent-shield] waiting for approval: ${event.tool}`);
     return;
   }
   if (event.decision !== "allow" || event.wouldBe) {

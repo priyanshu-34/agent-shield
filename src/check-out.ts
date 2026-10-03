@@ -6,8 +6,13 @@ export type Verdict = "allow" | "block" | "ask";
 
 export interface SessionState {
   taintSources: string[];
+  // sources where Check In found something that looks like an attack
+  flaggedSources: string[];
   callCounts: Record<string, number>;
+  blockCount: number;
 }
+
+export const newSession = (): SessionState => ({ taintSources: [], flaggedSources: [], callCounts: {}, blockCount: 0 });
 
 export interface CheckOutResult {
   verdict: Verdict;
@@ -34,6 +39,10 @@ export function checkOut(
   state: SessionState,
 ): CheckOutResult {
   const policy = policyFor(config, toolName);
+  const { maxBlocks } = config.defaults;
+  if (maxBlocks > 0 && state.blockCount >= maxBlocks) {
+    return { verdict: "block", reasons: [`${state.blockCount} calls were blocked in this conversation, so all tools are locked. Stop and tell the user what happened`] };
+  }
   if (policy.risk === "blocked") return { verdict: "block", reasons: [`tool "${toolName}" is blocked`] };
 
   // rules and secret checks apply to every tool; taint only gates risky ones
@@ -50,7 +59,8 @@ export function checkOut(
   if (reasons.length) return { verdict: "block", reasons };
 
   if (policy.risk === "risky" && state.taintSources.length) {
-    return { verdict: "ask", reasons: [`untrusted content was read earlier (${state.taintSources.join(", ")})`] };
+    const flagged = state.flaggedSources.length ? `; flagged as a possible attack: ${state.flaggedSources.join(", ")}` : "";
+    return { verdict: "ask", reasons: [`untrusted content was read earlier (${state.taintSources.join(", ")}${flagged})`] };
   }
   return { verdict: "allow", reasons: [] };
 }
