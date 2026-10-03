@@ -55,7 +55,7 @@ export interface ShieldOptions {
   config: ShieldConfigInput | string;
   onApproval?: (request: ApprovalRequest) => Promise<"allow" | "block">;
   log?: (event: ShieldEvent) => void;
-  // optional injection model, e.g. createClassifier() from "agent-shield/classifier"
+  // optional injection model, e.g. createClassifier() from "@priyans34/agent-shield/classifier"
   classifier?: Classifier;
 }
 

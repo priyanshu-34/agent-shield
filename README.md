@@ -5,7 +5,7 @@ Stop AI agents from being tricked by hidden instructions in web pages, emails an
 > **Status:** v0.1, early. Check In, Check Out, approvals, the optional local classifier and the output check work today, with LangChain/LangGraph and Mastra adapters. The red-team agent is coming next.
 
 ```bash
-npm install agent-shield
+npm install @priyans34/agent-shield
 ```
 
 ## The problem
@@ -73,8 +73,8 @@ Scenario 3 is the point: Check In won't catch everything, so Check Out is the sa
 
 ```ts
 import { createAgent } from "langchain";
-import { createShield } from "agent-shield";
-import { shieldTools } from "agent-shield/langchain";
+import { createShield } from "@priyans34/agent-shield";
+import { shieldTools } from "@priyans34/agent-shield/langchain";
 
 const shield = createShield({
   config: "./shield.yaml",
@@ -89,8 +89,8 @@ await agent.invoke(input, { configurable: { thread_id: "chat-42" } });
 
 ```ts
 import { Agent } from "@mastra/core/agent";
-import { createShield } from "agent-shield";
-import { shieldMastraTools } from "agent-shield/mastra";
+import { createShield } from "@priyans34/agent-shield";
+import { shieldMastraTools } from "@priyans34/agent-shield/mastra";
 
 const shield = createShield({ config: "./shield.yaml", onApproval: askUser });
 const agent = new Agent({ id: "assistant", name: "Assistant", instructions, model, tools: shieldMastraTools(shield, tools) });
@@ -186,7 +186,7 @@ npm install @huggingface/transformers
 ```
 
 ```ts
-import { createClassifier } from "agent-shield/classifier";
+import { createClassifier } from "@priyans34/agent-shield/classifier";
 
 const classifier = createClassifier();   // Horizon-Labs prompt-injection-guard-small
 await classifier.warmup();               // optional: download + load at startup, not on the first tool call
@@ -272,8 +272,8 @@ The request includes a plain-words `summary` you can show as-is:
 Three ready-made approvers:
 
 ```ts
-import { terminalApproval } from "agent-shield";
-import { interruptApproval } from "agent-shield/langgraph";
+import { terminalApproval } from "@priyans34/agent-shield";
+import { interruptApproval } from "@priyans34/agent-shield/langgraph";
 
 // 1. Local scripts: ask y/N in the terminal (blocks when there's no terminal, e.g. CI)
 createShield({ config, onApproval: terminalApproval() });

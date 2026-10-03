@@ -300,7 +300,7 @@ onApproval: async (request) => {
 }
 ```
 
-- Built-in options: **terminal prompt** (`terminalApproval()`, for local development), **LangGraph interrupt** (`interruptApproval` from `agent-shield/langgraph`, pauses the run until the app resumes it), and a **custom callback** (for apps and Slack).
+- Built-in options: **terminal prompt** (`terminalApproval()`, for local development), **LangGraph interrupt** (`interruptApproval` from `@priyans34/agent-shield/langgraph`, pauses the run until the app resumes it), and a **custom callback** (for apps and Slack).
 - A pending `ask` event is logged **before** waiting, so paused calls always show up in the log.
 - **Timeout:** if no answer arrives in time (default 5 min) → **block**.
 - The approval request shows **why** it was flagged, in plain words:
@@ -402,7 +402,7 @@ defaults:
 
 ```ts
 // shield.config.ts
-import { defineConfig } from "agent-shield";
+import { defineConfig } from "@priyans34/agent-shield";
 
 export default defineConfig({
   mode: "enforce",
@@ -420,8 +420,8 @@ export default defineConfig({
 
 **LangChain / LangGraph:**
 ```ts
-import { createShield } from "agent-shield";
-import { shieldTools } from "agent-shield/langchain";
+import { createShield } from "@priyans34/agent-shield";
+import { shieldTools } from "@priyans34/agent-shield/langchain";
 
 const shield = createShield({ config: "./shield.yaml", onApproval: askUser });
 const agent = createAgent({ model, tools: shieldTools(shield, tools) });
@@ -435,9 +435,9 @@ const result = await shield.guard("send_email", args, () => sendEmail(args), ses
 ```
 
 **Framework adapters** live in their own sub-paths, so the main package never depends on a framework:
-1. `agent-shield/langchain`: **built first.**
-2. `agent-shield/mastra`: second.
-3. `agent-shield/ai-sdk`: later.
+1. `@priyans34/agent-shield/langchain`: **built first.**
+2. `@priyans34/agent-shield/mastra`: second.
+3. `@priyans34/agent-shield/ai-sdk`: later.
 
 **Sessions and taint:**
 - Taint is tracked **per conversation**, using LangGraph's `thread_id`.
@@ -562,7 +562,7 @@ Each item records: content, source type, attack technique, expected result.
 | M4 | **Ask Human + Log** | Approval callback, terminal approval, JSON log | A flagged call pauses and waits; every decision is logged |
 | M5 | **Classifier + Output Check** | Test the candidate classifiers, ship the winner (see 7.1), encoding checks, markdown-image cleaning | UC-2 and UC-7 pass ✅ (winner: Horizon-Labs guard small, see bench/results.md) |
 | M6 | **Test set + scores** | 400 items + scoring script | Numbers in the README ✅ (516 items + 20 agent scenarios, bench/eval-results.md) |
-| M7 | **Adapters + publish** | LangChain/LangGraph adapter first, then Mastra; `npm publish` as `agent-shield`, docs, demo video | Anyone can `npm install agent-shield` and try it ✅ (adapters `agent-shield/langchain`, `agent-shield/langgraph`, `agent-shield/mastra`) |
+| M7 | **Adapters + publish** | LangChain/LangGraph adapter first, then Mastra; `npm publish` as `@priyans34/agent-shield`, docs, demo video | Anyone can `npm install @priyans34/agent-shield` and try it ✅ (adapters `@priyans34/agent-shield/langchain`, `@priyans34/agent-shield/langgraph`, `@priyans34/agent-shield/mastra`) |
 | M8 | **Red-team agent** | Attacker loop + report | First report published |
 
 **Later (v2+):** MCP proxy, local dashboard, Python version, streaming support, image checks, LLM judge tuning, a shared policy server for teams.
@@ -586,7 +586,7 @@ Each item records: content, source type, attack technique, expected result.
 
 | # | Question | Decision |
 |---|----------|----------|
-| 1 | Package name | `agent-shield` (free on npm as of 2026-10-02) |
+| 1 | Package name | `@priyans34/agent-shield` on npm. Unscoped `agent-shield` and `agent-shield-js` were rejected on 2026-10-03 as too similar to the newer `agentshield` / `agentshield-js` packages; the project and repo stay `agent-shield` |
 | 2 | First framework | LangChain / LangGraph first, then Mastra |
 | 3 | Config format | Both YAML and TypeScript (`defineConfig`, type-checked) |
 | 4 | Red-team LLM | Configurable provider, runs on the user's own API key, with cost and round limits |
