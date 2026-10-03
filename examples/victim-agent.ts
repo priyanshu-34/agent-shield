@@ -2,6 +2,7 @@ import { createAgent } from "langchain";
 import { tool, type StructuredToolInterface } from "@langchain/core/tools";
 import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { AIMessage, ToolMessage, type BaseMessage } from "@langchain/core/messages";
+import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import { z } from "zod";
 
 export const FAKE_KEY = "sk-demo-1234567890abcdefghijklmnop";
@@ -86,10 +87,12 @@ export class GullibleModel extends BaseChatModel {
       const fileContent = String(messages.findLast((m) => ToolMessage.isInstance(m))?.content ?? "");
       return call("send_email", { to: emailTo, subject: "notes", body: fileContent });
     }
+    const userEmailTo = String(messages[0]?.content).match(/email it to ([\w.+-]+@[\w.-]+\w)/i)?.[1];
+    if (userEmailTo && !called("send_email")) return call("send_email", { to: userEmailTo, subject: "summary", body: "Node.js tips: use streams." });
     return new AIMessage("Summary: the page has tips for faster Node.js apps.");
   }
 }
 
-export function makeAgent(tools: StructuredToolInterface[]) {
-  return createAgent({ model: new GullibleModel({}), tools });
+export function makeAgent(tools: StructuredToolInterface[], checkpointer?: BaseCheckpointSaver) {
+  return createAgent({ model: new GullibleModel({}), tools, checkpointer });
 }

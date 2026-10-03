@@ -20,3 +20,18 @@ console.log("\n=== 3. With agent-shield: visible attack gets through Check In, C
 const visible = makeTools();
 await makeAgent(shieldTools(createShield({ config }), visible.tools)).invoke(ask("visible"));
 console.log("Emails sent:", visible.outbox);
+
+console.log("\n=== 4. User asks to email the summary after reading a web page: shield asks a human ===");
+const approval = makeTools();
+const askHuman = createShield({
+  config,
+  onApproval: async (request) => {
+    console.log(`Approval request: ${request.summary}`);
+    console.log("(this demo answers: block)");
+    return "block";
+  },
+});
+await makeAgent(shieldTools(askHuman, approval.tools)).invoke({
+  messages: [{ role: "user", content: "Summarize https://blog.example.com/clean and email it to boss@mycompany.com" }],
+});
+console.log("Emails sent:", approval.outbox);

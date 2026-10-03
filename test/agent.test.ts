@@ -1,7 +1,9 @@
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { createShield, loadConfig, type ShieldConfigInput, type ShieldEvent } from "../src/index.js";
+import { Command, MemorySaver } from "@langchain/langgraph";
+import { createShield, loadConfig, type ApprovalRequest, type ShieldConfigInput, type ShieldEvent } from "../src/index.js";
 import { shieldTools } from "../src/langchain.js";
+import { interruptApproval } from "../src/langgraph.js";
 import { FAKE_KEY, makeAgent, makeTools } from "../examples/victim-agent.js";
 
 const configPath = fileURLToPath(new URL("../examples/shield.yaml", import.meta.url));
@@ -71,5 +73,55 @@ describe("victim agent", () => {
     await agent.invoke(ask("Summarize https://blog.example.com/clean"), { configurable: { thread_id: "a" } });
     expect(shield.isTainted("a")).toBe(true);
     expect(shield.isTainted("b")).toBe(false);
+  });
+});
+
+describe("asking a human inside the agent", () => {
+  const request = ask("Summarize https://blog.example.com/clean and email it to boss@mycompany.com");
+
+  it.each([
+    ["allow", 1],
+    ["block", 0],
+  ] as const)("callback answers %s → %i emails sent", async (answer, sent) => {
+    const requests: ApprovalRequest[] = [];
+    const shield = createShield({ config: configPath, log: () => {}, onApproval: async (r) => (requests.push(r), answer) });
+    const { tools, outbox } = makeTools();
+    await makeAgent(shieldTools(shield, tools)).invoke(request);
+    expect(requests).toHaveLength(1);
+    expect(requests[0].tool).toBe("send_email");
+    expect(outbox).toHaveLength(sent);
+  });
+
+  it.each([
+    ["allow", 1],
+    ["block", 0],
+  ] as const)("LangGraph interrupt pauses the run, resume %s → %i emails sent", async (answer, sent) => {
+    const events: ShieldEvent[] = [];
+    const shield = createShield({ config: configPath, log: (e) => events.push(e), onApproval: interruptApproval });
+    const { tools, outbox } = makeTools();
+    const agent = makeAgent(shieldTools(shield, tools), new MemorySaver());
+    const thread = { configurable: { thread_id: `t-${answer}` } };
+
+    const paused = await agent.invoke(request, thread);
+    expect(paused.__interrupt__?.[0].value).toMatchObject({ tool: "send_email", summary: expect.stringContaining("boss@mycompany.com") });
+    expect(outbox).toHaveLength(0);
+    expect(events.some((e) => e.stage === "check_out" && e.pending)).toBe(true);
+
+    await agent.invoke(new Command({ resume: answer }), thread);
+    expect(outbox).toHaveLength(sent);
+  });
+
+  it("blocks when interrupt can't pause (no checkpointer)", async () => {
+    const events: ShieldEvent[] = [];
+    const shield = createShield({ config: configPath, log: (e) => events.push(e), onApproval: interruptApproval });
+    const { tools, outbox } = makeTools();
+    const result = await makeAgent(shieldTools(shield, tools)).invoke(request);
+    expect(result.__interrupt__).toBeUndefined();
+    expect(events.filter((e) => e.stage === "check_out").at(-1)).toMatchObject({
+      tool: "send_email",
+      decision: "block",
+      reasons: expect.arrayContaining([expect.stringMatching(/approval failed: No checkpointer/)]),
+    });
+    expect(outbox).toHaveLength(0);
   });
 });
