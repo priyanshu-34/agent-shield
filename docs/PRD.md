@@ -300,7 +300,8 @@ onApproval: async (request) => {
 }
 ```
 
-- Built-in options: **terminal prompt** (for local development) and a **custom callback** (for apps and Slack).
+- Built-in options: **terminal prompt** (`terminalApproval()`, for local development), **LangGraph interrupt** (`interruptApproval` from `agent-shield/langgraph`, pauses the run until the app resumes it), and a **custom callback** (for apps and Slack).
+- A pending `ask` event is logged **before** waiting, so paused calls always show up in the log.
 - **Timeout:** if no answer arrives in time (default 5 min) → **block**.
 - The approval request shows **why** it was flagged, in plain words:
   > "The agent wants to send an email to unknown@gmail.com. It read an untrusted web page this turn, and that page was flagged as a possible attack."
@@ -467,7 +468,7 @@ const result = await shield.checkIn(text, { source: "email:inbox" });
 | E9 | **The classifier or LLM judge is down or slow** | Check In: skip that layer, log a warning, and **taint the turn anyway** (safe default). Check Out: follow `onError` (default `block` for risky tools). |
 | E10 | **The LLM judge itself gets tricked** | The judge only gives an opinion. It **never** allows a risky tool call by itself — Check Out rules are plain code. |
 | E11 | **Approval never answered** | Block after the timeout. |
-| E12 | **Agent retries a blocked call with small changes** | Count blocks per turn. After 3 blocks, stop the turn and alert the developer. |
+| E12 | **Agent retries a blocked call with small changes** | Count rule blocks per conversation. After 3 (`defaults.maxBlocks`), lock every tool and tell the agent to stop. Missing-approver blocks and human rejections don't count. No lockdown in `monitor` mode. |
 | E13 | **Tool chaining**: a safe tool's result feeds a risky tool | The safe tool's result goes through Check In, and the taint carries forward to the risky call. |
 | E14 | **Untrusted content asks to change the shield config** | Config is loaded once at start-up from a file. The agent has no tool to change it. |
 | E15 | **Multi-agent setup** (agent A hands work to agent B) | Messages from another agent are treated as **untrusted** unless marked trusted. Taint carries across the handoff. |
@@ -581,6 +582,8 @@ Each item records: content, source type, attack technique, expected result.
 | 6 | Classifier delivery | Not inside the npm package. Downloaded from Hugging Face on first use via `transformers.js` and cached; `modelPath` for offline use; `classifier: false` to turn it off |
 | 7 | Taint scope | Per LangGraph `thread_id`; never clears for a thread (see 7.8) |
 | 8 | Blocked calls | Return `"Blocked by agent-shield: <reason>"` as the tool result instead of throwing, so the agent can continue |
+| 9 | Data-in-URL check | Runs on URL arguments of **all** tools (a `safe` GET can leak data), but only after the session is tainted. Blocks query strings over 500 chars and base64-looking chunks of 40+ chars; slugs and hex IDs pass (hex leaks are a known gap); `allowUrlData: true` opts a tool out |
+| 10 | Interrupt approvals | Taint is in memory, so a LangGraph resume must happen in the same process. Persisting session state is future work |
 
 ## 15. Open questions
 

@@ -137,9 +137,42 @@ Prefer TypeScript? `defineConfig({...})` gives you the same config with types an
 | `allowPaths` / `denyPaths` | Path is inside / outside these folders. Paths outside the project are always blocked. |
 | `max` | Number is not above the limit |
 
-Every tool also gets a **secret check**: API keys, tokens, private keys and card numbers in arguments are blocked. Secrets are hidden in logs.
+Every tool also gets:
+
+- a **secret check**: API keys, tokens, private keys and card numbers in arguments are blocked. Secrets are hidden in logs.
+- a **data-in-URL check**: once untrusted content has been read, URLs carrying base64-looking chunks or huge query strings (a classic way to leak data with a simple GET) are blocked. Set `allowUrlData: true` on tools that really use long URL tokens, like presigned download links.
+- a **lockdown**: after 3 blocked calls in one conversation, every tool is locked and the agent is told to stop. Change it with `defaults.maxBlocks` (`0` turns it off).
 
 Tools not listed in the config are treated as `risky`.
+
+## Asking a human
+
+When a risky call needs approval, the shield calls your `onApproval` function. If there's no approver, the call is blocked. Terminal and callback approvers that don't answer in 5 minutes (`defaults.approvalTimeoutMs`) are blocked too. LangGraph interrupts have no timeout: the run stays paused until you resume it.
+
+The request includes a plain-words `summary` you can show as-is:
+
+> The agent wants to run "send_email" with {"to":"boss@mycompany.com",…}. Earlier in this conversation it read untrusted content (tool:fetch_page). None of it was flagged as an attack.
+
+Three ready-made approvers:
+
+```ts
+import { terminalApproval } from "agent-shield";
+import { interruptApproval } from "agent-shield/langgraph";
+
+// 1. Local scripts: ask y/N in the terminal (blocks when there's no terminal, e.g. CI)
+createShield({ config, onApproval: terminalApproval() });
+
+// 2. LangGraph apps: pause the run, show the request in your UI, resume later
+const shield = createShield({ config, onApproval: interruptApproval });
+const agent = createAgent({ model, tools: shieldTools(shield, tools), checkpointer });
+const paused = await agent.invoke(input, thread);          // paused.__interrupt__[0].value = the request
+await agent.invoke(new Command({ resume: "allow" }), thread);
+
+// 3. Anything else (Slack, email…): your own async function
+createShield({ config, onApproval: async (req) => (await askOnSlack(req.summary)) ? "allow" : "block" });
+```
+
+> **Known limit:** taint lives in memory. With `interruptApproval`, resume in the same process that paused, or the shield forgets the conversation was tainted.
 
 ## How taint works
 
@@ -153,7 +186,7 @@ Tools not listed in the config are treated as `risky`.
 - [x] M1: Demo agent that gets tricked
 - [x] M2: Check Out: tool rules, taint, secret check, approvals, logging
 - [x] M3: Check In: strip hidden text, decode encodings, detect attack patterns
-- [ ] M4: Approval and logging polish
+- [x] M4: Approvals (terminal, LangGraph interrupt, callback), lockdown, data-in-URL check
 - [ ] M5: Local classifier + output check (markdown image leaks)
 - [ ] M6: Test set + published scores
 - [ ] M7: Mastra adapter, npm release
