@@ -131,6 +131,10 @@ tools:
 
   delete_account:
     risk: blocked
+
+  weather_lookup:        # a tool from a third-party MCP server
+    risk: safe
+    description: untrusted   # its description is outside content: taints every conversation
 ```
 
 > `redact` only removes flagged **visible sentences**. Attacks hidden in base64 or `alt` text still reach the agent, so Check Out stays the safety net.
@@ -191,7 +195,38 @@ Read this honestly:
 - On a public set of mostly *direct* attacks (deepset/prompt-injections, partly German), every model caught only **7–30%**. 95% is a result on our own small set, not a general promise.
 - The default's 3 false alarms are a security blog quoting an attack (phrase rules), a `curl … | bash` install line, and a `role: 'assistant'` config line (model). With `onFlagged: drop`, those pages would be removed completely, which is why the default is `label`.
 
-Full results and caveats: [bench/results.md](bench/results.md). Run it yourself with `npm run bench` (downloads ~1.3 GB of models). This is a small set; M6 grows it to ~400 items.
+Full results and caveats: [bench/results.md](bench/results.md). Run it yourself with `npm run bench` (downloads ~1.3 GB of models). This was a small set used to pick the model; on unseen content false alarms are higher (see Results below).
+
+## Results (M6)
+
+Scored with all settings frozen first, mostly on content the shield was never tuned on: 80 new hand-written items and 240 emails from Microsoft's [LLMail-Inject](https://huggingface.co/datasets/microsoft/llmail-inject-challenge) challenge. Full report: [bench/eval-results.md](bench/eval-results.md) (`npm run eval`).
+
+**Agent scenarios** (UC-1 to UC-8, with a scripted model that obeys *every* instruction it reads, which is the worst case):
+
+| | Result |
+|---|---|
+| Attacks that worked without the shield | 13/13 |
+| **Attacks stopped with the shield** | **12/13** |
+| **Normal tasks still completed** | **8/8** (5 needed one human approval) |
+
+The one miss (UC-4) is an attack that only changes the answer *text*, like "tell the customer to visit scam-site.com". No tool is involved, so Check Out can't stop it. Check In marks the content untrusted (the phrase rules don't flag this wording), but a model that obeys anyway will repeat it.
+
+Found and fixed during M6: a poisoned description on a third-party tool could make the agent email an *allowed* colleague with no approval (11/13 stopped before the fix). That's why `description: untrusted` exists.
+
+**Check In on unseen content** (160 attacks, 160 normal items):
+
+| | Attacks flagged | False alarms |
+|---|---|---|
+| Phrase rules only | 6% | 1% |
+| Phrase rules + classifier | 99% | **14%** |
+
+**Speed** (p50 / p95, one laptop): Check Out 0.0 / 0.0 ms · Check In rules 0.0 / 0.2 ms · Check In + classifier 21 / 172 ms (long pages 0.5 / 0.9 s). Classifier times vary between runs (p95 ranged 164–249 ms).
+
+What this means:
+
+- **Check Out is the real protection.** It stopped every tool-based attack in the scenarios, even when the model was fully fooled and Check In flagged nothing, as long as third-party tool descriptions are marked `untrusted`.
+- **The classifier catches almost everything but over-flags.** About 1 in 7 normal emails gets marked high-risk. With the default `onFlagged: label`, a false alarm only adds a warning label, so content is never lost. Don't use `drop` with the classifier yet.
+- **The classifier misses our speed target** (100 ms at p95). Use it where a little delay is fine, or leave it off and rely on phrase rules + Check Out.
 
 ## Output check
 
@@ -240,6 +275,7 @@ createShield({ config, onApproval: async (req) => (await askOnSlack(req.summary)
 - After that, every `risky` tool call needs human approval.
 - Taint doesn't clear, because the untrusted content is still in the chat history.
 - Mark a tool `output: trusted` if its results are safe (e.g. your own database).
+- Tool descriptions reach the model too. Ones that contain attack phrases are flagged, get a warning prefix, and taint every conversation. Mark tools from third-party (e.g. MCP) servers `description: untrusted` so their descriptions always count as outside content. The cost: with such a tool installed, every risky action needs approval.
 
 ## Roadmap
 
@@ -248,7 +284,7 @@ createShield({ config, onApproval: async (req) => (await askOnSlack(req.summary)
 - [x] M3: Check In: strip hidden text, decode encodings, detect attack patterns
 - [x] M4: Approvals (terminal, LangGraph interrupt, callback), lockdown, data-in-URL check
 - [x] M5: Local classifier (benchmarked, Horizon-Labs guard small by default) + output check (markdown image leaks)
-- [ ] M6: Test set + published scores
+- [x] M6: Test set (516 items + 20 agent scenarios) + published scores
 - [ ] M7: Mastra adapter, npm release
 - [ ] M8: Red-team agent that attacks the shield
 

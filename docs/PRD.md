@@ -528,6 +528,18 @@ All numbers are published in the README with the exact test set version.
 
 ---
 
+**Measured in M6** (bench/eval-results.md, settings frozen before scoring, on content never used for tuning):
+
+| Metric | Goal | Measured | Met? |
+|---|---|---|---|
+| Attacks stopped in agent scenarios (worst-case obedient model) | – | 12/13 (UC-4 text-only attack is a known gap; 11/13 before the M6 tool-description fix) | – |
+| Clean agent tasks still completed | – | 8/8 | ✅ |
+| Check In detection rate | ≥ 80% | 6% rules only · 99% with classifier | ✅ with classifier |
+| False alarm rate | < 5% | 1% rules only · 14% with classifier | ❌ with classifier |
+| Added delay (p95) | < 100 ms | 0.0 ms Check Out · 0.3 ms rules · 164–249 ms classifier (varies by run) | ❌ with classifier |
+
+A real-model attack success rate has not been measured yet; the scripted model is a worst case, not an estimate.
+
 ## 11. Test set
 
 | Part | Size (v1) | Source |
@@ -549,7 +561,7 @@ Each item records: content, source type, attack technique, expected result.
 | M3 | **Check In** | Cleaning + pattern rules + untrusted labels + taint tracking | Hidden text is removed and the turn is tainted |
 | M4 | **Ask Human + Log** | Approval callback, terminal approval, JSON log | A flagged call pauses and waits; every decision is logged |
 | M5 | **Classifier + Output Check** | Test the candidate classifiers, ship the winner (see 7.1), encoding checks, markdown-image cleaning | UC-2 and UC-7 pass ✅ (winner: Horizon-Labs guard small, see bench/results.md) |
-| M6 | **Test set + scores** | 400 items + scoring script | Numbers in the README |
+| M6 | **Test set + scores** | 400 items + scoring script | Numbers in the README ✅ (516 items + 20 agent scenarios, bench/eval-results.md) |
 | M7 | **Adapters + publish** | LangChain/LangGraph adapter first, then Mastra; `npm publish` as `agent-shield`, docs, demo video | Anyone can `npm install agent-shield` and try it |
 | M8 | **Red-team agent** | Attacker loop + report | First report published |
 
@@ -587,6 +599,7 @@ Each item records: content, source type, attack technique, expected result.
 | 11 | Default classifier | Horizon-Labs `prompt-injection-guard-small` (Apache-2.0, 268 MB, threshold 0.89). Won the M5 benchmark (bench/results.md) under a rule set before running. Off unless the app passes `classifier` |
 | 12 | Output check | `shield.checkOutput(answer)`, called by the app on the final answer. Removes images to non-allowed domains (markdown, reference-style, `<img>`), links carrying data, and secrets |
 | 13 | Classifier-only hits in `redact` mode | Dropped, since there is no sentence to cut |
+| 14 | Tool descriptions | Scanned when tools are wrapped; flagged ones get a warning prefix and taint every session. `description: untrusted` (for third-party/MCP tools) taints every session even when nothing is flagged; cost: every risky action then needs approval |
 
 ## 15. Open questions
 
