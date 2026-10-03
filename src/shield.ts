@@ -1,6 +1,7 @@
 import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { checkIn as runCheckIn, type Classifier, type Detection } from "./check-in.js";
+import { checkOutput as runCheckOutput } from "./output.js";
 import { checkOut, newSession, policyFor, redactSecrets, type SessionState, type Verdict } from "./check-out.js";
 import { loadConfig, type ShieldConfig, type ShieldConfigInput } from "./config.js";
 
@@ -41,7 +42,14 @@ export interface CheckInEvent {
   error?: string;
 }
 
-export type ShieldEvent = CheckOutEvent | CheckInEvent;
+export interface OutputEvent {
+  time: string;
+  sessionId: string;
+  stage: "output";
+  removed: string[];
+}
+
+export type ShieldEvent = CheckOutEvent | CheckInEvent | OutputEvent;
 
 export interface ShieldOptions {
   config: ShieldConfigInput | string;
@@ -158,10 +166,18 @@ export function createShield(options: ShieldOptions) {
     }
   }
 
+  // Cleans the agent's final answer before it is shown: drops images to unknown sites and links carrying data.
+  function checkOutput(text: string, { sessionId = DEFAULT_SESSION } = {}): string {
+    const r = runCheckOutput(text, config.output.allowImageDomains, config.output.hideSecrets);
+    log({ time: new Date().toISOString(), sessionId, stage: "output", removed: r.removed });
+    return config.mode === "monitor" ? text : r.text;
+  }
+
   return {
     config,
     guard,
     checkIn,
+    checkOutput,
     isTainted: (sessionId = DEFAULT_SESSION) => session(sessionId).taintSources.length > 0,
     reset: (sessionId = DEFAULT_SESSION) => void sessions.delete(sessionId),
   };
@@ -202,6 +218,10 @@ export function terminalApproval(input: NodeJS.ReadableStream & { isTTY?: boolea
 }
 
 export function consoleLogger(event: ShieldEvent) {
+  if (event.stage === "output") {
+    if (event.removed.length) console.warn(`[agent-shield] output: removed ${event.removed.join("; ")}`);
+    return;
+  }
   if (event.stage === "check_in") {
     if (event.error) console.warn(`[agent-shield] check-in ${event.source}: ${event.error}`);
     if (event.flagged || event.removed.length) {

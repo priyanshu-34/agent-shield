@@ -36,6 +36,13 @@ export const configSchema = z
       })
       .strict()
       .prefault({}),
+    output: z
+      .object({
+        allowImageDomains: z.array(z.string()).default([]),
+        hideSecrets: z.boolean().default(true),
+      })
+      .strict()
+      .prefault({}),
     tools: z.record(z.string(), toolSchema).default({}),
     defaults: z
       .object({

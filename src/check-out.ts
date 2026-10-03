@@ -89,7 +89,7 @@ function wildcard(pattern: string, value: string): boolean {
   return new RegExp(`^${re}$`, "is").test(value.trim());
 }
 
-function domainAllowed(url: string, domains: string[]): boolean {
+export function domainAllowed(url: string, domains: string[]): boolean {
   let host: string;
   try {
     host = new URL(url).hostname.toLowerCase();
