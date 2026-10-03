@@ -12,7 +12,7 @@ export function shieldTools<T extends StructuredToolInterface>(shield: Shield, t
         const result = await shield.guard(original.name, args, () => original.invoke(args, innerConfig), sessionId);
         return result.ok ? result.value : result.message;
       },
-      { name: original.name, description: original.description, schema: original.schema as any },
+      { name: original.name, description: shield.checkToolDescription(original.name, original.description), schema: original.schema as any },
     ),
   );
 }

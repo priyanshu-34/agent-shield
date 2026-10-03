@@ -29,7 +29,7 @@ const SECRET_PATTERNS: [string, RegExp][] = [
 ];
 
 export function policyFor(config: ShieldConfig, toolName: string): ToolPolicy {
-  return config.tools[toolName] ?? { risk: config.defaults.unknownTool, output: "untrusted", allowUrlData: false };
+  return config.tools[toolName] ?? { risk: config.defaults.unknownTool, output: "untrusted", description: "trusted", allowUrlData: false };
 }
 
 export function checkOut(

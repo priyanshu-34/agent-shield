@@ -17,6 +17,8 @@ const toolSchema = z
   .object({
     risk: z.enum(["safe", "risky", "blocked"]).default("risky"),
     output: z.enum(["untrusted", "trusted"]).default("untrusted"),
+    // descriptions from third-party (e.g. MCP) servers are outside content too
+    description: z.enum(["trusted", "untrusted"]).default("trusted"),
     maxPerSession: z.number().int().positive().optional(),
     // turn off the data-in-URL check for tools that legitimately use long URL tokens (e.g. presigned links)
     allowUrlData: z.boolean().default(false),
