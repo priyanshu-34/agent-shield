@@ -20,13 +20,17 @@
     "./classifier": {
       "import": "./dist/classifier.js",
       "require": "./dist/classifier.cjs"
+    },
+    "./mastra": {
+      "import": "./dist/mastra.js",
+      "require": "./dist/mastra.cjs"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts src/langchain.ts src/langgraph.ts src/classifier.ts --format esm,cjs --dts --clean",
+    "build": "tsup src/index.ts src/langchain.ts src/langgraph.ts src/classifier.ts src/mastra.ts --format esm,cjs --dts --clean",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "demo": "tsx examples/victim-demo.ts",
@@ -36,7 +40,8 @@
   "peerDependencies": {
     "@langchain/core": "^1.1.0",
     "@langchain/langgraph": "^1.0.0",
-    "@huggingface/transformers": "^4.0.0"
+    "@huggingface/transformers": "^4.0.0",
+    "@mastra/core": "^1.0.0"
   },
   "peerDependenciesMeta": {
     "@langchain/core": {
@@ -46,6 +51,9 @@
       "optional": true
     },
     "@huggingface/transformers": {
+      "optional": true
+    },
+    "@mastra/core": {
       "optional": true
     }
   },
@@ -59,8 +67,10 @@
     "@huggingface/transformers": "^4.3.0",
     "@langchain/core": "^1.2.14",
     "@langchain/langgraph": "^1.4.18",
+    "@mastra/core": "^1.74.0",
     "@types/node": "^26.6.4",
     "@types/picomatch": "^4.0.3",
+    "ai": "^7.0.127",
     "langchain": "^1.5.15",
     "tsup": "^8.5.1",
     "tsx": "^4.23.15",
