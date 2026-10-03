@@ -1,29 +1,80 @@
 {
   "name": "agent-shield",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Stops AI agents from being tricked by hidden instructions in web pages, emails and files.",
+  "keywords": [
+    "ai",
+    "agents",
+    "llm",
+    "prompt-injection",
+    "security",
+    "guardrails",
+    "langchain",
+    "langgraph",
+    "mastra",
+    "mcp"
+  ],
+  "author": "Priyanshu Singh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/priyanshu-34/agent-shield.git"
+  },
+  "homepage": "https://github.com/priyanshu-34/agent-shield#readme",
+  "bugs": {
+    "url": "https://github.com/priyanshu-34/agent-shield/issues"
+  },
   "license": "MIT",
   "type": "module",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./langchain": {
-      "import": "./dist/langchain.js",
-      "require": "./dist/langchain.cjs"
+      "import": {
+        "types": "./dist/langchain.d.ts",
+        "default": "./dist/langchain.js"
+      },
+      "require": {
+        "types": "./dist/langchain.d.cts",
+        "default": "./dist/langchain.cjs"
+      }
     },
     "./langgraph": {
-      "import": "./dist/langgraph.js",
-      "require": "./dist/langgraph.cjs"
+      "import": {
+        "types": "./dist/langgraph.d.ts",
+        "default": "./dist/langgraph.js"
+      },
+      "require": {
+        "types": "./dist/langgraph.d.cts",
+        "default": "./dist/langgraph.cjs"
+      }
     },
     "./classifier": {
-      "import": "./dist/classifier.js",
-      "require": "./dist/classifier.cjs"
+      "import": {
+        "types": "./dist/classifier.d.ts",
+        "default": "./dist/classifier.js"
+      },
+      "require": {
+        "types": "./dist/classifier.d.cts",
+        "default": "./dist/classifier.cjs"
+      }
     },
     "./mastra": {
-      "import": "./dist/mastra.js",
-      "require": "./dist/mastra.cjs"
+      "import": {
+        "types": "./dist/mastra.d.ts",
+        "default": "./dist/mastra.js"
+      },
+      "require": {
+        "types": "./dist/mastra.d.cts",
+        "default": "./dist/mastra.cjs"
+      }
     }
   },
   "files": [
@@ -38,9 +89,9 @@
     "eval": "tsx bench/eval.ts"
   },
   "peerDependencies": {
+    "@huggingface/transformers": "^4.0.0",
     "@langchain/core": "^1.1.0",
     "@langchain/langgraph": "^1.0.0",
-    "@huggingface/transformers": "^4.0.0",
     "@mastra/core": "^1.0.0"
   },
   "peerDependenciesMeta": {
@@ -76,5 +127,12 @@
     "tsx": "^4.23.15",
     "typescript": "~5.9.3",
     "vitest": "^5.0.3"
-  }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false
 }
