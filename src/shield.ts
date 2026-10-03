@@ -1,6 +1,6 @@
 import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
-import { checkIn as runCheckIn, type Detection } from "./check-in.js";
+import { checkIn as runCheckIn, type Classifier, type Detection } from "./check-in.js";
 import { checkOut, newSession, policyFor, redactSecrets, type SessionState, type Verdict } from "./check-out.js";
 import { loadConfig, type ShieldConfig, type ShieldConfigInput } from "./config.js";
 
@@ -47,6 +47,8 @@ export interface ShieldOptions {
   config: ShieldConfigInput | string;
   onApproval?: (request: ApprovalRequest) => Promise<"allow" | "block">;
   log?: (event: ShieldEvent) => void;
+  // optional injection model, e.g. createClassifier() from "agent-shield/classifier"
+  classifier?: Classifier;
 }
 
 export type GuardResult<T> = { ok: true; value: T } | { ok: false; message: string };
@@ -128,19 +130,26 @@ export function createShield(options: ShieldOptions) {
 
     const value = await run();
     if (policyFor(config, tool).output === "trusted") return { ok: true, value };
-    return { ok: true, value: checkIn(value, { source: `tool:${tool}`, sessionId }) as T };
+    return { ok: true, value: (await checkIn(value, { source: `tool:${tool}`, sessionId })) as T };
   }
 
   // Cleans and labels untrusted content, and marks the session tainted.
-  function checkIn(value: unknown, { source = "external", sessionId = DEFAULT_SESSION } = {}): unknown {
+  async function checkIn(value: unknown, { source = "external", sessionId = DEFAULT_SESSION } = {}): Promise<unknown> {
     const state = session(sessionId);
     if (!state.taintSources.includes(source)) state.taintSources.push(source);
     if (!config.checkIn.enabled) return value;
     const event = { time: new Date().toISOString(), sessionId, stage: "check_in" as const, source };
     try {
-      const r = runCheckIn(value, source, config.checkIn.onFlagged);
+      const { onFlagged, classifierTimeoutMs, maxChunks } = config.checkIn;
+      const r = await runCheckIn(value, source, onFlagged, { classifier: options.classifier, timeoutMs: classifierTimeoutMs, maxChunks });
       if (r.flagged && !state.flaggedSources.includes(source)) state.flaggedSources.push(source);
-      log({ ...event, flagged: r.flagged, detections: r.detections.map((d) => ({ ...d, match: redactSecrets(d.match) })), removed: r.removed });
+      log({
+        ...event,
+        flagged: r.flagged,
+        detections: r.detections.map((d) => ({ ...d, match: redactSecrets(d.match) })),
+        removed: r.removed,
+        ...(r.warnings?.length && { error: r.warnings.join("; ") }),
+      });
       return config.mode === "monitor" ? value : r.value;
     } catch (err) {
       // content stays tainted, so risky actions still need approval
@@ -194,6 +203,7 @@ export function terminalApproval(input: NodeJS.ReadableStream & { isTTY?: boolea
 
 export function consoleLogger(event: ShieldEvent) {
   if (event.stage === "check_in") {
+    if (event.error) console.warn(`[agent-shield] check-in ${event.source}: ${event.error}`);
     if (event.flagged || event.removed.length) {
       const rules = [...new Set(event.detections.map((d) => d.rule))];
       console.warn(`[agent-shield] check-in ${event.source}: ${[...event.removed.map((r) => `removed ${r}`), ...rules.map((r) => `flagged ${r}`)].join("; ")}`);

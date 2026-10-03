@@ -31,6 +31,8 @@ export const configSchema = z
       .object({
         enabled: z.boolean().default(true),
         onFlagged: z.enum(["label", "redact", "drop"]).default("label"),
+        classifierTimeoutMs: z.number().int().positive().default(10_000),
+        maxChunks: z.number().int().positive().default(20),
       })
       .strict()
       .prefault({}),

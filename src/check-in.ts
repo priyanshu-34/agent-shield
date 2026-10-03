@@ -14,6 +14,18 @@ export interface CheckInResult<T = unknown> {
   flagged: boolean;
   detections: Detection[];
   removed: string[];
+  // plain text the classifier should read: visible text plus anything that was hidden
+  texts: { where: string; text: string }[];
+  warnings?: string[];
+}
+
+// A model that scores text from 0 (safe) to 1 (injection); `threshold` defaults to 0.5.
+export type Classifier = ((text: string) => Promise<{ score: number }>) & { threshold?: number };
+
+export interface ClassifierOptions {
+  classifier?: Classifier;
+  timeoutMs?: number;
+  maxChunks?: number;
 }
 
 const PATTERNS: [string, RegExp][] = [
@@ -24,7 +36,7 @@ const PATTERNS: [string, RegExp][] = [
   ["note-to-ai", /\b(note|message|instructions?)\s+(to|for)\s+(the\s+|any\s+)?(ai|assistant|agent|model|llm|chatbot)s?\b|\battention\s*,?\s+(ai|assistant|agent|llm)\b/i],
   ["system-note", /\b(system|admin|developer)\s+(note|message|instruction|override)\b/i],
   ["hide-from-user", /\b(do not|don't|never)\s+(tell|inform|mention|reveal|show)\b.{0,20}\b(the\s+)?user\b/i],
-  ["exfil-secrets", /\b(send|email|forward|post|upload|reveal|print|leak)\b.{0,40}\b(api[\s_-]?keys?|passwords?|secrets?|credentials|tokens?|system prompt|\.env|ssh keys?)\b/i],
+  ["exfil-secrets", /\b(send|email|forward|post|upload|reveal|print|leak)\s+(me\s+)?((the|your|all|any|their|my)\s+|(the\s+)?user'?s\s+){0,2}(api[\s_-]?keys?|passwords?|secrets?|credentials|tokens?|system prompt|\.env( file)?|ssh keys?)\b/i],
 ];
 
 const HIDDEN_STYLE: [string, RegExp][] = [
@@ -65,39 +77,93 @@ export function checkInText(text: string): CheckInResult<string> {
   if (collapsed !== clean) removed.push("repeated text");
   clean = collapsed;
 
+  const decoded = decodeEmbedded(clean);
   const detections = [
     ...scan(clean, "visible text"),
     ...hiddenTexts.flatMap((t) => scan(t, "hidden text")),
-    ...decodeEmbedded(clean).flatMap(([where, t]) => scan(t, where)),
+    ...decoded.flatMap(([where, t]) => scan(t, where)),
   ];
-  return { value: clean, flagged: detections.length > 0, detections, removed };
+  const visible = /<[a-z!][^>]*>/i.test(clean) ? parse(clean).textContent : clean;
+  const texts = [
+    { where: "visible text", text: visible },
+    ...hiddenTexts.map((text) => ({ where: "hidden text", text })),
+    ...decoded.map(([where, text]) => ({ where, text })),
+  ].filter((t) => t.text.trim());
+  return { value: clean, flagged: detections.length > 0, detections, removed, texts };
+}
+
+// Scores overlapping chunks (models only read ~512 tokens) and reports the worst one; never throws.
+export async function classify(texts: CheckInResult["texts"], opts: ClassifierOptions): Promise<{ detections: Detection[]; warnings: string[] }> {
+  const { classifier, timeoutMs = 10_000, maxChunks = 20 } = opts;
+  if (!classifier || !texts.length) return { detections: [], warnings: [] };
+  const chunks = texts.flatMap(({ where, text }) => chunk(text.replace(/\s+/g, " ").trim()).map((c) => ({ where, text: c })));
+  const warnings: string[] = [];
+  if (chunks.length > maxChunks) warnings.push(`classifier only read ${maxChunks} of ${chunks.length} chunks`);
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    const run = async () => {
+      let worst = { score: 0, where: "", text: "" };
+      for (const c of chunks.slice(0, maxChunks)) {
+        const { score } = await classifier(c.text);
+        if (score > worst.score) worst = { score, ...c };
+      }
+      return worst;
+    };
+    const timeout = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error(`timed out after ${timeoutMs} ms`)), timeoutMs)));
+    const worst = await Promise.race([run(), timeout]);
+    const threshold = classifier.threshold ?? 0.5;
+    const detections = worst.score >= threshold
+      ? [{ rule: "classifier", where: worst.where, match: `score ${worst.score.toFixed(2)}: ${worst.text.slice(0, 100)}` }]
+      : [];
+    return { detections, warnings };
+  } catch (err) {
+    return { detections: [], warnings: [...warnings, `classifier skipped: ${(err as Error).message}`] };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export function chunk(text: string, size = 1500, overlap = 200): string[] {
+  if (text.length <= size) return [text];
+  const out: string[] = [];
+  for (let i = 0; i < text.length; i += size - overlap) out.push(text.slice(i, i + size));
+  return out;
 }
 
 // Strings are cleaned and wrapped; plain objects/arrays get each string cleaned; anything else passes through.
-export function checkIn(value: unknown, source: string, onFlagged: OnFlagged): CheckInResult {
+export async function checkIn(value: unknown, source: string, onFlagged: OnFlagged, opts: ClassifierOptions = {}): Promise<CheckInResult> {
   const detections: Detection[] = [];
   const removed = new Set<string>();
+  const texts: CheckInResult["texts"] = [];
+  const warnings: string[] = [];
 
-  const cleanString = (s: string) => {
+  const cleanString = async (s: string) => {
     const r = checkInText(s);
-    detections.push(...r.detections);
+    const model = await classify(r.texts, opts);
+    const found = [...r.detections, ...model.detections];
+    detections.push(...found);
     r.removed.forEach((x) => removed.add(x));
-    if (!r.flagged) return r.value;
-    if (onFlagged === "drop") return `[content removed by agent-shield: ${[...new Set(r.detections.map((d) => d.rule))].join(", ")}]`;
+    texts.push(...r.texts);
+    warnings.push(...model.warnings);
+    if (!found.length) return r.value;
+    // redact can't locate what only the classifier flagged, so that content is dropped
+    if (onFlagged === "drop" || (onFlagged === "redact" && !r.detections.length)) {
+      return `[content removed by agent-shield: ${[...new Set(found.map((d) => d.rule))].join(", ")}]`;
+    }
     return onFlagged === "redact" ? redact(r.value) : r.value;
   };
-  const walk = (v: unknown): unknown => {
+  const walk = async (v: unknown): Promise<unknown> => {
     if (typeof v === "string") return cleanString(v);
-    if (Array.isArray(v)) return v.map(walk);
+    if (Array.isArray(v)) return Promise.all(v.map(walk));
     if (v && Object.getPrototypeOf(v) === Object.prototype) {
-      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));
+      return Object.fromEntries(await Promise.all(Object.entries(v).map(async ([k, x]) => [k, await walk(x)])));
     }
     return v;
   };
 
-  let out = walk(value);
+  let out = await walk(value);
   if (typeof out === "string") out = label(out, source, detections.length > 0);
-  return { value: out, flagged: detections.length > 0, detections, removed: [...removed] };
+  return { value: out, flagged: detections.length > 0, detections, removed: [...removed], texts, warnings };
 }
 
 export function scan(text: string, where: string): Detection[] {
