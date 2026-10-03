@@ -125,3 +125,24 @@ describe("asking a human inside the agent", () => {
     expect(outbox).toHaveLength(0);
   });
 });
+
+describe("leaks through URLs and images", () => {
+  it("UC-2: blocks a GET that smuggles file contents to an allowed-looking site", async () => {
+    const { calls } = await run("exfil-url");
+    expect(calls).toEqual([
+      ["fetch_page", "allow"],
+      ["read_file", "allow"],
+      ["fetch_page", "block"],
+    ]);
+  });
+
+  it("UC-7: the output check removes a leaking image from the final answer", async () => {
+    const { shield, result } = await run("image-leak");
+    const answer = String(result.messages.at(-1)?.content);
+    expect(answer).toContain("evil.example/pixel.png");
+    const shown = shield.checkOutput(answer);
+    expect(shown).not.toContain("evil.example");
+    expect(shown).toContain("[image removed: status]");
+  });
+});
+
