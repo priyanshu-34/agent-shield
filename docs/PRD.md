@@ -548,7 +548,7 @@ Each item records: content, source type, attack technique, expected result.
 | M2 | **Check Out** | Tool wrapper, YAML config, allow/block lists, path rules, taint rule, leak check, `monitor`/`enforce` modes | The M1 attack is blocked |
 | M3 | **Check In** | Cleaning + pattern rules + untrusted labels + taint tracking | Hidden text is removed and the turn is tainted |
 | M4 | **Ask Human + Log** | Approval callback, terminal approval, JSON log | A flagged call pauses and waits; every decision is logged |
-| M5 | **Classifier + Output Check** | Test the candidate classifiers, ship the winner (see 7.1), encoding checks, markdown-image cleaning | UC-2 and UC-7 pass |
+| M5 | **Classifier + Output Check** | Test the candidate classifiers, ship the winner (see 7.1), encoding checks, markdown-image cleaning | UC-2 and UC-7 pass ✅ (winner: Horizon-Labs guard small, see bench/results.md) |
 | M6 | **Test set + scores** | 400 items + scoring script | Numbers in the README |
 | M7 | **Adapters + publish** | LangChain/LangGraph adapter first, then Mastra; `npm publish` as `agent-shield`, docs, demo video | Anyone can `npm install agent-shield` and try it |
 | M8 | **Red-team agent** | Attacker loop + report | First report published |
@@ -579,11 +579,14 @@ Each item records: content, source type, attack technique, expected result.
 | 3 | Config format | Both YAML and TypeScript (`defineConfig`, type-checked) |
 | 4 | Red-team LLM | Configurable provider, runs on the user's own API key, with cost and round limits |
 | 5 | Classifier | Pluggable. Default = whichever candidate scores best on our test set in M5 (see 7.1) |
-| 6 | Classifier delivery | Not inside the npm package. Downloaded from Hugging Face on first use via `transformers.js` and cached; `modelPath` for offline use; `classifier: false` to turn it off |
+| 6 | Classifier delivery | Not inside the npm package. Downloaded from Hugging Face on first use via `transformers.js` and cached; `offline: true` + `cacheDir` for offline use; models pinned to a fixed revision; off unless the app passes a `classifier` |
 | 7 | Taint scope | Per LangGraph `thread_id`; never clears for a thread (see 7.8) |
 | 8 | Blocked calls | Return `"Blocked by agent-shield: <reason>"` as the tool result instead of throwing, so the agent can continue |
 | 9 | Data-in-URL check | Runs on URL arguments of **all** tools (a `safe` GET can leak data), but only after the session is tainted. Blocks query strings over 500 chars and base64-looking chunks of 40+ chars; slugs and hex IDs pass (hex leaks are a known gap); `allowUrlData: true` opts a tool out |
 | 10 | Interrupt approvals | Taint is in memory, so a LangGraph resume must happen in the same process. Persisting session state is future work |
+| 11 | Default classifier | Horizon-Labs `prompt-injection-guard-small` (Apache-2.0, 268 MB, threshold 0.89). Won the M5 benchmark (bench/results.md) under a rule set before running. Off unless the app passes `classifier` |
+| 12 | Output check | `shield.checkOutput(answer)`, called by the app on the final answer. Removes images to non-allowed domains (markdown, reference-style, `<img>`), links carrying data, and secrets |
+| 13 | Classifier-only hits in `redact` mode | Dropped, since there is no sentence to cut |
 
 ## 15. Open questions
 

