@@ -30,7 +30,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "demo": "tsx examples/victim-demo.ts",
-    "bench": "tsx bench/run.ts"
+    "bench": "tsx bench/run.ts",
+    "eval": "tsx bench/eval.ts"
   },
   "peerDependencies": {
     "@langchain/core": "^1.1.0",
