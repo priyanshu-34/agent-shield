@@ -6,7 +6,10 @@ Stop AI agents from being tricked by hidden instructions in web pages, emails an
 
 ```bash
 npm install @priyans34/agent-shield
+npx @priyans34/agent-shield init   # writes a starter shield.yaml
 ```
+
+📖 **Docs:** https://priyanshu-34.github.io/agent-shield/
 
 ## The problem
 

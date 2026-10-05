@@ -90,7 +90,9 @@
     "demo": "tsx examples/victim-demo.ts",
     "bench": "tsx bench/run.ts",
     "eval": "tsx bench/eval.ts",
-    "record-demo": "tsx scripts/record-demo.ts && npx -y svg-term-cli@2.1.1 --in docs/demo.cast --out docs/demo.svg --window --width 132 --height 40"
+    "record-demo": "tsx scripts/record-demo.ts && npx -y svg-term-cli@2.1.1 --in docs/demo.cast --out docs/demo.svg --window --width 132 --height 40",
+    "docs:dev": "vitepress dev site",
+    "docs:build": "vitepress build site"
   },
   "peerDependencies": {
     "@huggingface/transformers": "^4.0.0",
@@ -130,6 +132,7 @@
     "tsup": "^8.5.1",
     "tsx": "^4.23.15",
     "typescript": "~5.9.3",
+    "vitepress": "^1.6.4",
     "vitest": "^5.0.3"
   },
   "main": "./dist/index.cjs",
