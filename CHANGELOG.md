@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.1 — 2026-10-05
+
+**Security fix.** In 0.1.0, an `allow` pattern like `*@mycompany.com` accepted strings such as
+`"x@evil.com, boss@mycompany.com"`, because `*` matched anything, including commas and spaces.
+An attacker could add their own recipient as long as the string ended with an allowed value. Please upgrade.
+
+- `*` in `allow` patterns now matches a single token (no spaces, `,`, `;`, `<` or `>`). `deny` patterns still match anywhere.
+- New `allowEmails` rule: reads recipient lists (`a@x.com, B <b@y.com>; c@z.com`) and checks every address
+  against allowed domains (`mycompany.com`, `*.partner.com`) or full addresses. Use it for `to`, `cc` and `bcc`.
+
 ## 0.1.0 — 2026-10-03
 
 First release.

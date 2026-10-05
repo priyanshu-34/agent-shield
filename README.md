@@ -145,7 +145,8 @@ tools:
   send_email:
     risk: risky          # has side effects; needs approval after untrusted content
     rules:
-      to: { allow: ["*@mycompany.com"] }
+      to: { allowEmails: ["mycompany.com"] }
+      cc: { allowEmails: ["mycompany.com"] }
     maxPerSession: 5
 
   run_command:
@@ -166,7 +167,8 @@ Prefer TypeScript? `defineConfig({...})` gives you the same config with types an
 
 | Rule | Checks |
 |------|--------|
-| `allow` / `deny` | Value matches a pattern (`*` = anything). Deny matches anywhere in the value. |
+| `allow` / `deny` | Value matches a pattern. In `allow`, `*` matches one word (no spaces, commas or `<>`); `deny` matches anywhere in the value. |
+| `allowEmails` | Every address in a recipient list (`a@x.com, B <b@y.com>`) is in an allowed domain (`mycompany.com`, `*.partner.com`) or is an allowed address. Use this for `to`, `cc`, `bcc`. |
 | `allowDomains` | The URL's host is on the list (`*.x.com` = any subdomain) |
 | `allowPaths` / `denyPaths` | Path is inside / outside these folders. Paths outside the project are always blocked. |
 | `max` | Number is not above the limit |

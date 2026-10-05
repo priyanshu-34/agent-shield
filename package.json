@@ -1,6 +1,6 @@
 {
   "name": "@priyans34/agent-shield",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Stops AI agents from being tricked by hidden instructions in web pages, emails and files.",
   "keywords": [
     "ai",
