@@ -29,7 +29,7 @@ const SECRET_PATTERNS: [string, RegExp][] = [
 ];
 
 export function policyFor(config: ShieldConfig, toolName: string): ToolPolicy {
-  return config.tools[toolName] ?? { risk: config.defaults.unknownTool, output: "untrusted", description: "trusted", allowUrlData: false };
+  return config.tools[toolName] ?? { risk: config.defaults.unknownTool, approval: "auto", output: "untrusted", description: "trusted", allowUrlData: false };
 }
 
 export function checkOut(
@@ -60,6 +60,9 @@ export function checkOut(
   }
   if (reasons.length) return { verdict: "block", reasons };
 
+  if (policy.risk === "risky" && policy.approval === "always") {
+    return { verdict: "ask", reasons: [`"${toolName}" always needs approval`] };
+  }
   if (policy.risk === "risky" && state.taintSources.length) {
     const flagged = state.flaggedSources.length ? `; flagged as a possible attack: ${state.flaggedSources.join(", ")}` : "";
     return { verdict: "ask", reasons: [`untrusted content was read earlier (${state.taintSources.join(", ")}${flagged})`] };
@@ -75,7 +78,7 @@ function checkArg(name: string, value: unknown, rule: ArgRule): string[] {
     const s = String(v);
     if (rule.allow && !rule.allow.some((p) => wildcard(p, s))) reasons.push(`${name} "${s}" is not in the allow list`);
     // deny matches anywhere, so "x && rm -rf /" is still caught
-    if (rule.deny?.some((p) => wildcard(`*${p}*`, s, ".*"))) reasons.push(`${name} "${s}" matches a deny rule`);
+    if (rule.deny?.some((p) => (isRegex(p) ? toRegex(p).test(s) : wildcard(`*${p}*`, s, ".*")))) reasons.push(`${name} "${s}" matches a deny rule`);
     if (rule.allowEmails) {
       const emails = emailsIn(s);
       if (!emails) reasons.push(`${name} "${s}" is not a valid email address list`);
@@ -94,6 +97,9 @@ function wildcard(pattern: string, value: string, star = "[^\\s,;<>]*"): boolean
   const re = pattern.split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(star);
   return new RegExp(`^${re}$`, "is").test(value.trim());
 }
+
+const isRegex = (p: string) => p.length > 2 && p.startsWith("/") && p.endsWith("/");
+const toRegex = (p: string) => new RegExp(p.slice(1, -1), "i");
 
 // Reads "a@x.com, B <b@y.com>; c@z.com" into addresses; anything that isn't an address fails the check.
 function emailsIn(value: string): string[] | undefined {

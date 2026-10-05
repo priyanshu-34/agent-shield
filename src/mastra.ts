@@ -1,9 +1,10 @@
-import { DEFAULT_SESSION, type Shield } from "./shield.js";
+import { DEFAULT_SESSION, argNames, type Shield } from "./shield.js";
 
 // Structural type so this file needs no import from @mastra/core.
 interface MastraToolLike {
   id: string;
   description: string;
+  inputSchema?: unknown;
   outputSchema?: unknown;
   execute?: (input: any, context: any) => Promise<any>;
 }
@@ -13,6 +14,7 @@ export function shieldMastraTools<T extends Record<string, MastraToolLike>>(shie
   const wrapped = Object.entries(tools).map(([key, original]) => {
     const copy = Object.assign(Object.create(Object.getPrototypeOf(original)), original) as MastraToolLike;
     copy.description = shield.checkToolDescription(original.id, original.description);
+    shield.checkToolArgs(original.id, argNames(original.inputSchema));
     // checked output can be a block message or a labelled string, so the original output schema no longer applies
     copy.outputSchema = undefined;
     copy.execute = async (input, context) => {

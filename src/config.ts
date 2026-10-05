@@ -1,10 +1,12 @@
 import { readFileSync } from "node:fs";
 import { parse } from "yaml";
 import { z } from "zod";
+import { expandPacks, mergeTools, packsSchema } from "./packs.js";
 
 const ruleSchema = z
   .object({
     allow: z.array(z.string()).optional(),
+    // wildcard patterns, or regular expressions written as "/…/"
     deny: z.array(z.string()).optional(),
     allowDomains: z.array(z.string()).optional(),
     // email domains ("mycompany.com", "*.mycompany.com") or full addresses; every recipient in a list must match
@@ -18,6 +20,8 @@ const ruleSchema = z
 const toolSchema = z
   .object({
     risk: z.enum(["safe", "risky", "blocked"]).default("risky"),
+    // "always": a risky tool asks a human even in a clean conversation
+    approval: z.enum(["auto", "always"]).default("auto"),
     output: z.enum(["untrusted", "trusted"]).default("untrusted"),
     // descriptions from third-party (e.g. MCP) servers are outside content too
     description: z.enum(["trusted", "untrusted"]).default("trusted"),
@@ -31,6 +35,7 @@ const toolSchema = z
 export const configSchema = z
   .object({
     mode: z.enum(["monitor", "enforce"]).default("enforce"),
+    packs: packsSchema.optional(),
     checkIn: z
       .object({
         enabled: z.boolean().default(true),
@@ -72,8 +77,16 @@ export function defineConfig(config: ShieldConfigInput): ShieldConfigInput {
 
 // Accepts a config object or a path to a YAML file; throws a readable error on bad config.
 export function loadConfig(source: ShieldConfigInput | string): ShieldConfig {
-  const raw = typeof source === "string" ? parse(readFileSync(source, "utf8")) : source;
-  const result = configSchema.safeParse(raw ?? {});
+  const raw = (typeof source === "string" ? parse(readFileSync(source, "utf8")) : source) ?? {};
+  const result = configSchema.safeParse(raw);
   if (!result.success) throw new Error(`agent-shield: invalid config\n${z.prettifyError(result.error)}`);
-  return result.data;
+  if (!raw.packs) return result.data;
+  // packs are expanded before defaults are applied, so your own tool settings override them field by field
+  let tools;
+  try {
+    tools = mergeTools(expandPacks(raw.packs), raw.tools as Parameters<typeof mergeTools>[1]);
+  } catch (err) {
+    throw new Error(`agent-shield: invalid config\n${(err as Error).message}`);
+  }
+  return configSchema.parse({ ...raw, tools });
 }
