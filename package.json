@@ -25,6 +25,9 @@
   },
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "agent-shield": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "import": {
@@ -81,7 +84,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts src/langchain.ts src/langgraph.ts src/classifier.ts src/mastra.ts --format esm,cjs --dts --clean",
+    "build": "tsup src/index.ts src/langchain.ts src/langgraph.ts src/classifier.ts src/mastra.ts --format esm,cjs --dts --clean && tsup src/cli.ts --format esm",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "demo": "tsx examples/victim-demo.ts",
