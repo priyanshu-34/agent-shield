@@ -18,5 +18,5 @@ tools:
     risk: risky
     rules:
       to:
-        allow: ["*@mycompany.com"]
+        allowEmails: ["mycompany.com"]
     maxPerSession: 5

@@ -75,7 +75,12 @@ function checkArg(name: string, value: unknown, rule: ArgRule): string[] {
     const s = String(v);
     if (rule.allow && !rule.allow.some((p) => wildcard(p, s))) reasons.push(`${name} "${s}" is not in the allow list`);
     // deny matches anywhere, so "x && rm -rf /" is still caught
-    if (rule.deny?.some((p) => wildcard(`*${p}*`, s))) reasons.push(`${name} "${s}" matches a deny rule`);
+    if (rule.deny?.some((p) => wildcard(`*${p}*`, s, ".*"))) reasons.push(`${name} "${s}" matches a deny rule`);
+    if (rule.allowEmails) {
+      const emails = emailsIn(s);
+      if (!emails) reasons.push(`${name} "${s}" is not a valid email address list`);
+      else for (const e of emails) if (!emailAllowed(e, rule.allowEmails)) reasons.push(`${name} "${e}" is not an allowed email address`);
+    }
     if (rule.allowDomains && !domainAllowed(s, rule.allowDomains)) reasons.push(`${name} "${s}" is not an allowed domain`);
     if (rule.max !== undefined && !(Number(v) <= rule.max)) reasons.push(`${name} ${s} is over the limit ${rule.max}`);
     if (rule.allowPaths || rule.denyPaths) reasons.push(...checkPath(name, s, rule));
@@ -84,9 +89,31 @@ function checkArg(name: string, value: unknown, rule: ArgRule): string[] {
 }
 
 // "*" matches anything, case-insensitive.
-function wildcard(pattern: string, value: string): boolean {
-  const re = pattern.split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*");
+// "*" matches anything for deny; for allow it matches one token, so "x@evil.com, a@ok.com" can't pass "*@ok.com".
+function wildcard(pattern: string, value: string, star = "[^\\s,;<>]*"): boolean {
+  const re = pattern.split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(star);
   return new RegExp(`^${re}$`, "is").test(value.trim());
+}
+
+// Reads "a@x.com, B <b@y.com>; c@z.com" into addresses; anything that isn't an address fails the check.
+function emailsIn(value: string): string[] | undefined {
+  const parts = value.split(/[,;\n]/).map((p) => p.trim()).filter(Boolean);
+  const out: string[] = [];
+  for (const part of parts) {
+    const addr = (part.match(/<([^<>]+)>\s*$/)?.[1] ?? part).trim().toLowerCase();
+    if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(addr)) return undefined;
+    out.push(addr);
+  }
+  return out.length ? out : undefined;
+}
+
+function emailAllowed(addr: string, allowed: string[]): boolean {
+  const domain = addr.split("@")[1];
+  return allowed.some((a) => {
+    a = a.toLowerCase();
+    if (a.includes("@")) return a === addr;
+    return a.startsWith("*.") ? domain.endsWith(a.slice(1)) : domain === a;
+  });
 }
 
 export function domainAllowed(url: string, domains: string[]): boolean {

@@ -7,6 +7,8 @@ const ruleSchema = z
     allow: z.array(z.string()).optional(),
     deny: z.array(z.string()).optional(),
     allowDomains: z.array(z.string()).optional(),
+    // email domains ("mycompany.com", "*.mycompany.com") or full addresses; every recipient in a list must match
+    allowEmails: z.array(z.string()).optional(),
     allowPaths: z.array(z.string()).optional(),
     denyPaths: z.array(z.string()).optional(),
     max: z.number().optional(),

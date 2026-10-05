@@ -37,6 +37,19 @@ describe("checkOut", () => {
     expect(verdict("delete_account", {})).toBe("block");
   });
 
+  it("can't be bypassed by hiding an extra recipient in an allowed-looking string", () => {
+    for (const to of ["x@evil.com, boss@mycompany.com", "x@evil.com;boss@mycompany.com", "Evil <x@evil.com> boss@mycompany.com", "x@evil.com\nboss@mycompany.com"]) {
+      expect(verdict("send_email", { to })).toBe("block");
+    }
+    const emails = loadConfig({ tools: { mail: { risk: "risky", rules: { to: { allowEmails: ["mycompany.com", "*.partner.com", "ceo@other.org"] } } } } });
+    const mail = (to: string) => checkOut(emails, "mail", { to }, clean()).verdict;
+    expect(mail("Boss <boss@mycompany.com>, a@eu.partner.com; ceo@other.org")).toBe("allow");
+    expect(mail("boss@mycompany.com, x@evil.com")).toBe("block");
+    expect(mail("Evil <x@evil.com> boss@mycompany.com")).toBe("block");
+    expect(mail("boss@mycompany.com.evil.com")).toBe("block");
+    expect(mail("not an address")).toBe("block");
+  });
+
   it("asks a human for risky tools once the session is tainted", () => {
     const tainted = clean({ taintSources: ["tool:fetch_page"] });
     expect(verdict("send_email", { to: "boss@mycompany.com" }, tainted)).toBe("ask");
